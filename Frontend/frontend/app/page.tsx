@@ -14,6 +14,7 @@ export default function Home() {
     loading,
     txPending,
     error,
+    lastTxHash, // Fix #16 — consume tx hash from hook
     isVerifier,
     isExpired,
     connectWallet,
@@ -43,12 +44,16 @@ export default function Home() {
             <span className="hero-accent">On-Chain</span>
           </h1>
           <p className="hero-sub">
-            Every donation is tracked on Rootstock. Funds release only when verified
-            milestones are complete — or donors reclaim them after 90 days of inactivity.
+            Every donation is tracked on Rootstock. Funds release only when
+            verified milestones are complete — or donors reclaim them after
+            90 days of inactivity.
           </p>
           <div className="hero-actions">
             {account ? (
-              <button className="btn-primary" onClick={() => setShowDonate(true)}>
+              <button
+                className="btn-primary"
+                onClick={() => setShowDonate(true)}
+              >
                 Donate tRBTC
               </button>
             ) : (
@@ -56,18 +61,47 @@ export default function Home() {
                 Connect Wallet to Donate
               </button>
             )}
-            {account && isExpired && campaignData && Number(campaignData.myContribution) > 0 && (
-              <button className="btn-refund" onClick={claimRefund} disabled={txPending}>
-                {txPending ? "Processing…" : "Claim Refund"}
-              </button>
-            )}
+            {account &&
+              isExpired &&
+              campaignData &&
+              Number(campaignData.myContribution) > 0 && (
+                <button
+                  className="btn-refund"
+                  onClick={claimRefund}
+                  disabled={txPending}
+                >
+                  {txPending ? "Processing…" : "Claim Refund"}
+                </button>
+              )}
           </div>
         </section>
 
-        {/* Error */}
+        {/* Error banner */}
         {error && (
           <div className="error-banner">
             <span>⚠ {error}</span>
+          </div>
+        )}
+
+        {/* Fix #16 — Transaction confirmed banner with RSK Explorer link */}
+        {lastTxHash && !txPending && (
+          <div
+            className="error-banner"
+            style={{
+              borderColor: "var(--green)",
+              color: "var(--green)",
+              background: "var(--green-dim)",
+            }}
+          >
+            ✓ Transaction confirmed —{" "}
+            <a
+              href={`https://explorer.testnet.rsk.co/tx/${lastTxHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--accent)", textDecoration: "underline" }}
+            >
+              View on RSK Explorer ↗
+            </a>
           </div>
         )}
 
@@ -93,7 +127,7 @@ export default function Home() {
           </>
         )}
 
-        {/* On-chain proof section */}
+        {/* How it works */}
         <section className="proof-section">
           <h2 className="section-title">
             <span className="section-icon">⬡</span> How it works
@@ -102,17 +136,26 @@ export default function Home() {
             <div className="how-card">
               <div className="how-num">01</div>
               <div className="how-title">Donate</div>
-              <div className="how-desc">Send tRBTC directly to the smart contract. Your contribution is tracked on-chain, forever.</div>
+              <div className="how-desc">
+                Send tRBTC directly to the smart contract. Your contribution
+                is tracked on-chain, forever.
+              </div>
             </div>
             <div className="how-card">
               <div className="how-num">02</div>
               <div className="how-title">Milestone verified</div>
-              <div className="how-desc">The designated verifier confirms real-world progress and triggers fund release to the NGO.</div>
+              <div className="how-desc">
+                The designated verifier confirms real-world progress and
+                triggers fund release to the NGO.
+              </div>
             </div>
             <div className="how-card">
               <div className="how-num">03</div>
               <div className="how-title">90-day safeguard</div>
-              <div className="how-desc">No activity for 90 days? Donors can claim a full refund — no questions, no permission needed.</div>
+              <div className="how-desc">
+                No activity for 90 days? Donors can claim a full refund —
+                no questions, no permission needed.
+              </div>
             </div>
           </div>
         </section>
@@ -124,7 +167,10 @@ export default function Home() {
               <span className="section-icon">◈</span> On-chain addresses
             </h2>
             <div className="address-list">
-              <AddressRow label="Contract" address={process.env.NEXT_PUBLIC_CONTRACT_ADDRESS!} />
+              <AddressRow
+                label="Contract"
+                address={process.env.NEXT_PUBLIC_CONTRACT_ADDRESS!}
+              />
               <AddressRow label="NGO" address={campaignData.ngo} />
               <AddressRow label="Verifier" address={campaignData.verifier} />
             </div>

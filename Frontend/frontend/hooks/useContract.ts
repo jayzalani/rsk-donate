@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { createPublicClient, createWalletClient, custom, http, parseEther, formatEther } from "viem";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  parseEther,
+  formatEther,
+} from "viem";
 import { DONATION_VAULT_ABI } from "../constant/abi";
 import { CONTRACT_ADDRESS, RSK_TESTNET } from "@/lib/contract";
 import { CampaignData, Milestone } from "@/lib/type";
+
 declare global {
   interface Window {
     ethereum?: {
@@ -13,21 +21,30 @@ declare global {
     };
   }
 }
+
 export function useContract() {
   const [account, setAccount] = useState<string | null>(null);
   const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
   const [loading, setLoading] = useState(true);
   const [txPending, setTxPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fix #16 — track last tx hash for explorer link
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
- const publicClient = createPublicClient({
-  chain: RSK_TESTNET,
-  transport: http("https://public-node.testnet.rsk.co", {
-    timeout: 30_000,
-    retryCount: 3,
-    retryDelay: 1000,
-  }),
-});
+  // Fix #8 — memoize publicClient so it is stable across renders and can be
+  // safely listed as a useCallback dependency without causing infinite loops.
+  const publicClient = useMemo(
+    () =>
+      createPublicClient({
+        chain: RSK_TESTNET,
+        transport: http("https://public-node.testnet.rsk.co", {
+          timeout: 30_000,
+          retryCount: 3,
+          retryDelay: 1000,
+        }),
+      }),
+    []
+  );
 
   const getWalletClient = () => {
     if (typeof window === "undefined" || !window.ethereum) return null;
@@ -37,108 +54,162 @@ export function useContract() {
     });
   };
 
-  const fetchCampaignData = useCallback(async (connectedAccount?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Fix #8 — dependency array now includes publicClient and CONTRACT_ADDRESS
+  const fetchCampaignData = useCallback(
+    async (connectedAccount?: string) => {
+      try {
+        setLoading(true);
+        setError(null);
 
-      const [description, targetAmount, totalRaised, ngo, verifier, lastUpdateTimestamp] =
-        await Promise.all([
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "description" }),
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "targetAmount" }),
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "totalRaised" }),
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "ngo" }),
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "verifier" }),
-          publicClient.readContract({ address: CONTRACT_ADDRESS, abi: DONATION_VAULT_ABI, functionName: "lastUpdateTimestamp" }),
-        ]);
-
-      // Fetch milestones - try indices 0-9
-      const milestones: Milestone[] = [];
-      for (let i = 0; i < 10; i++) {
-        try {
-          const m = await publicClient.readContract({
+        const [
+          description,
+          targetAmount,
+          totalRaised,
+          ngo,
+          verifier,
+          lastUpdateTimestamp,
+          // Fix #15 — use milestoneCount() instead of brute-forcing indices 0-9
+          milestoneCountRaw,
+        ] = await Promise.all([
+          publicClient.readContract({
             address: CONTRACT_ADDRESS,
             abi: DONATION_VAULT_ABI,
-            functionName: "milestones",
-            args: [BigInt(i)],
+            functionName: "description",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "targetAmount",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "totalRaised",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "ngo",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "verifier",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "lastUpdateTimestamp",
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "milestoneCount",
+          }),
+        ]);
+
+        // Fix #15 — fetch exactly the right number of milestones in parallel
+        const count = Number(milestoneCountRaw);
+        const milestoneResults = await Promise.all(
+          Array.from({ length: count }, (_, i) =>
+            publicClient.readContract({
+              address: CONTRACT_ADDRESS,
+              abi: DONATION_VAULT_ABI,
+              functionName: "milestones",
+              args: [BigInt(i)],
+            })
+          )
+        );
+        const milestones: Milestone[] = milestoneResults.map((m) => ({
+          amount: m[0],
+          released: m[1],
+          description: m[2],
+        }));
+
+        let myContribution = BigInt(0);
+        const addr = connectedAccount ?? account;
+        if (addr) {
+          myContribution = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DONATION_VAULT_ABI,
+            functionName: "contributions",
+            args: [addr as `0x${string}`],
           });
-          milestones.push({ amount: m[0], released: m[1], description: m[2] });
-        } catch {
-          break;
+        }
+
+        setCampaignData({
+          description: description as string,
+          targetAmount: targetAmount as bigint,
+          totalRaised: totalRaised as bigint,
+          ngo: ngo as string,
+          verifier: verifier as string,
+          lastUpdateTimestamp: lastUpdateTimestamp as bigint,
+          milestones,
+          myContribution,
+        });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to load campaign data");
+      } finally {
+        setLoading(false);
+      }
+    },
+    // Fix #8 — correct dependency array
+    [account, publicClient]
+  );
+
+  const connectWallet = async () => {
+    try {
+      if (typeof window === "undefined") return;
+
+      const eth = (
+        window as Window & {
+          ethereum?: {
+            request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
+          };
+        }
+      ).ethereum;
+
+      if (!eth) {
+        setError("MetaMask not found. Please install it from metamask.io");
+        return;
+      }
+
+      const accounts = (await eth.request({
+        method: "eth_requestAccounts",
+      })) as string[];
+      const addr = accounts[0];
+      setAccount(addr);
+
+      // Switch to RSK Testnet
+      try {
+        await eth.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0x1f" }],
+        });
+      } catch (switchError: unknown) {
+        const err = switchError as { code?: number };
+        if (err?.code === 4902) {
+          await eth.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: "0x1f",
+                chainName: "Rootstock Testnet",
+                nativeCurrency: { name: "tRBTC", symbol: "tRBTC", decimals: 18 },
+                rpcUrls: ["https://public-node.testnet.rsk.co"],
+                blockExplorerUrls: ["https://explorer.testnet.rsk.co"],
+              },
+            ],
+          });
         }
       }
 
-      let myContribution = BigInt(0);
-      const addr = connectedAccount || account;
-      if (addr) {
-        myContribution = await publicClient.readContract({
-          address: CONTRACT_ADDRESS,
-          abi: DONATION_VAULT_ABI,
-          functionName: "contributions",
-          args: [addr as `0x${string}`],
-        });
-      }
-
-      setCampaignData({
-        description: description as string,
-        targetAmount: targetAmount as bigint,
-        totalRaised: totalRaised as bigint,
-        ngo: ngo as string,
-        verifier: verifier as string,
-        lastUpdateTimestamp: lastUpdateTimestamp as bigint,
-        milestones,
-        myContribution,
-      });
+      await fetchCampaignData(addr);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load campaign data");
-    } finally {
-      setLoading(false);
+      setError(e instanceof Error ? e.message : "Failed to connect wallet");
+      console.error("Wallet connect error:", e);
     }
-  }, [account]);
-
-const connectWallet = async () => {
-  try {
-    if (typeof window === "undefined") return;
-    
-    const eth = (window as Window & { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
-    
-    if (!eth) {
-      setError("MetaMask not found. Please install it from metamask.io");
-      return;
-    }
-
-    const accounts = await eth.request({ method: "eth_requestAccounts" }) as string[];
-    const addr = accounts[0];
-    setAccount(addr);
-
-    // Switch to RSK Testnet
-    try {
-      await eth.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x1f" }],
-      });
-    } catch (switchError: unknown) {
-      const err = switchError as { code?: number };
-      if (err?.code === 4902) {
-        await eth.request({
-          method: "wallet_addEthereumChain",
-          params: [{
-            chainId: "0x1f",
-            chainName: "Rootstock Testnet",
-            nativeCurrency: { name: "tRBTC", symbol: "tRBTC", decimals: 18 },
-            rpcUrls: ["https://public-node.testnet.rsk.co"],
-            blockExplorerUrls: ["https://explorer.testnet.rsk.co"],
-          }],
-        });
-      }
-    }
-
-    await fetchCampaignData(addr);
-  } catch (e: unknown) {
-    setError(e instanceof Error ? e.message : "Failed to connect wallet");
-    console.error("Wallet connect error:", e);
-  }
-};
+  };
 
   const donate = async (amountEth: string) => {
     if (!account) return;
@@ -147,6 +218,7 @@ const connectWallet = async () => {
     try {
       setTxPending(true);
       setError(null);
+      setLastTxHash(null);
       const hash = await walletClient.writeContract({
         address: CONTRACT_ADDRESS,
         abi: DONATION_VAULT_ABI,
@@ -154,6 +226,8 @@ const connectWallet = async () => {
         account: account as `0x${string}`,
         value: parseEther(amountEth),
       });
+      // Fix #16 — surface tx hash for explorer link
+      setLastTxHash(hash);
       await publicClient.waitForTransactionReceipt({ hash });
       await fetchCampaignData();
     } catch (e: unknown) {
@@ -170,6 +244,7 @@ const connectWallet = async () => {
     try {
       setTxPending(true);
       setError(null);
+      setLastTxHash(null);
       const hash = await walletClient.writeContract({
         address: CONTRACT_ADDRESS,
         abi: DONATION_VAULT_ABI,
@@ -177,6 +252,8 @@ const connectWallet = async () => {
         account: account as `0x${string}`,
         args: [BigInt(index)],
       });
+      // Fix #16 — surface tx hash for explorer link
+      setLastTxHash(hash);
       await publicClient.waitForTransactionReceipt({ hash });
       await fetchCampaignData();
     } catch (e: unknown) {
@@ -193,12 +270,15 @@ const connectWallet = async () => {
     try {
       setTxPending(true);
       setError(null);
+      setLastTxHash(null);
       const hash = await walletClient.writeContract({
         address: CONTRACT_ADDRESS,
         abi: DONATION_VAULT_ABI,
         functionName: "claimRefund",
         account: account as `0x${string}`,
       });
+      // Fix #16 — surface tx hash for explorer link
+      setLastTxHash(hash);
       await publicClient.waitForTransactionReceipt({ hash });
       await fetchCampaignData();
     } catch (e: unknown) {
@@ -210,11 +290,14 @@ const connectWallet = async () => {
 
   useEffect(() => {
     fetchCampaignData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isVerifier = account?.toLowerCase() === campaignData?.verifier?.toLowerCase();
+  const isVerifier =
+    account?.toLowerCase() === campaignData?.verifier?.toLowerCase();
   const isExpired = campaignData
-    ? Date.now() / 1000 > Number(campaignData.lastUpdateTimestamp) + 90 * 24 * 60 * 60
+    ? Date.now() / 1000 >
+      Number(campaignData.lastUpdateTimestamp) + 90 * 24 * 60 * 60
     : false;
 
   return {
@@ -223,6 +306,7 @@ const connectWallet = async () => {
     loading,
     txPending,
     error,
+    lastTxHash,
     isVerifier,
     isExpired,
     connectWallet,
