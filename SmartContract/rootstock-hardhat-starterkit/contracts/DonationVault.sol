@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 contract DonationVault {
     address public ngo;
@@ -22,6 +22,7 @@ contract DonationVault {
     event Donated(address indexed donor, uint256 amount);
     event MilestoneReleased(uint256 index, uint256 amount);
     event RefundClaimed(address indexed donor, uint256 amount);
+    event VerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
 
     constructor(
         address _ngo,
@@ -31,7 +32,18 @@ contract DonationVault {
         uint256[] memory _milestoneAmounts,
         string[] memory _milestoneDescriptions
     ) {
+        // Fix #9 - Zero address validation
+        require(_ngo != address(0), "NGO cannot be zero address");
+        require(_verifier != address(0), "Verifier cannot be zero address");
         require(_milestoneAmounts.length == _milestoneDescriptions.length, "Mismatching milestones");
+
+        // Fix #5 - Milestone amounts must sum to target
+        uint256 sum = 0;
+        for (uint i = 0; i < _milestoneAmounts.length; i++) {
+            sum += _milestoneAmounts[i];
+        }
+        require(sum == _targetAmount, "Milestones must sum to target");
+
         ngo = _ngo;
         verifier = _verifier;
         description = _description;
@@ -43,24 +55,32 @@ contract DonationVault {
         }
     }
 
-    // CHANGED: Visibility to 'public' so receive() can call it internally
     function donate() public payable {
         require(totalRaised < targetAmount, "Target reached");
-        contributions[msg.sender] += msg.value;
-        totalRaised += msg.value;
+
+        // Fix #4 - Cap donation at remaining target, refund excess
+        uint256 accepted = msg.value;
+        if (totalRaised + msg.value > targetAmount) {
+            accepted = targetAmount - totalRaised;
+            payable(msg.sender).transfer(msg.value - accepted);
+        }
+
+        contributions[msg.sender] += accepted;
+        totalRaised += accepted;
         lastUpdateTimestamp = block.timestamp;
-        emit Donated(msg.sender, msg.value);
+        emit Donated(msg.sender, accepted);
     }
 
     function releaseMilestone(uint256 _index) external {
         require(msg.sender == verifier, "Only verifier can release");
+        require(_index < milestones.length, "Invalid milestone index");
         require(!milestones[_index].released, "Already released");
         require(address(this).balance >= milestones[_index].amount, "Insufficient funds");
 
         milestones[_index].released = true;
         lastUpdateTimestamp = block.timestamp;
         payable(ngo).transfer(milestones[_index].amount);
-        
+
         emit MilestoneReleased(_index, milestones[_index].amount);
     }
 
@@ -74,8 +94,15 @@ contract DonationVault {
         emit RefundClaimed(msg.sender, amount);
     }
 
-    // This now works perfectly without 'this.'
-    receive() external payable { 
-        donate(); 
+    // Fix #6 - Verifier recovery mechanism
+    function updateVerifier(address _newVerifier) external {
+        require(msg.sender == verifier, "Only verifier");
+        require(_newVerifier != address(0), "Zero address");
+        emit VerifierUpdated(verifier, _newVerifier);
+        verifier = _newVerifier;
+    }
+
+    receive() external payable {
+        donate();
     }
 }

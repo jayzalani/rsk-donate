@@ -5,7 +5,7 @@ export const RSK_TESTNET = {
   name: "Rootstock Testnet",
   nativeCurrency: { name: "tRBTC", symbol: "tRBTC", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://rpc.testnet.rootstock.io/${process.env.NEXT_PUBLIC_RSK_API_KEY}"] },
+    default: { http: [`https://rpc.testnet.rootstock.io/${process.env.NEXT_PUBLIC_RSK_API_KEY}`] },
     public: { http: ["https://public-node.testnet.rsk.co"] },
   },
   blockExplorers: {
