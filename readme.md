@@ -6,33 +6,15 @@
 
 ## Demo
 
-<!-- Add your demo video below. Replace the placeholder with your actual video embed or link. -->
-
 ### Video Walkthrough
 
 [Google Drive](https://drive.google.com/file/d/1PouaoXoKRqH1tytOpi58WKoWuUtvK3S2/view?usp=sharing)
-
-<!-- 
-  OPTIONS TO EMBED YOUR VIDEO:
-  
-  1. YouTube embed (paste into GitHub markdown):
-     [![DonationVault Demo](https://img.youtube.com/vi/YOUR_VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)
-
-  2. Loom:
-     [![Watch the demo](https://cdn.loom.com/sessions/thumbnails/YOUR_LOOM_ID-with-play.gif)](https://www.loom.com/share/YOUR_LOOM_ID)
-
-  3. Local video file (if repo hosts it):
-     <video src="./demo.mp4" controls width="100%" />
-
-  4. GitHub hosted MP4 (upload to releases and paste the raw link):
-     https://github.com/YOUR_USERNAME/YOUR_REPO/releases/download/v1.0/demo.mp4
--->
 
 ---
 
 ## What Is This?
 
-DonationVault is a Next.js frontend for a Solidity smart contract that lets donors send tRBTC to an NGO through a milestone-gated vault. A trusted verifier approves each milestone and releases funds incrementally. If the vault goes 90 days without activity, donors can claim full refunds.
+DonationVault is a Next.js 16 frontend for a Solidity smart contract that lets donors send tRBTC to an NGO through a milestone-gated vault. A trusted verifier approves each milestone and releases funds incrementally. If the vault goes 90 days without activity, donors can claim full refunds.
 
 **Core flow:**
 
@@ -47,12 +29,15 @@ DonationVault is a Next.js frontend for a Solidity smart contract that lets dono
 - Connect MetaMask and auto-switch to RSK Testnet
 - View vault description, NGO address, verifier address
 - Live funding progress bar (raised vs. target)
-- Donate with quick-fill amount buttons
+- Donate with quick-fill amount buttons and full client-side validation
+- Per-donor cap (10% of target) enforced both on-chain and surfaced in the UI
 - Milestone list — verifier sees release buttons, donors see status
 - Refund panel with live countdown to expiry
 - Every submitted transaction links to RSK Testnet Explorer
-- Wrong network detection with one-click switch
-- Deploy new vaults directly from the browser (`/deploy` page)
+- Deploy new vaults directly from the browser (`/deploy` page via factory)
+- Browse all factory-deployed vaults at `/vaults`
+- Two-step verifier handoff with a 2-day time-lock for security
+- NGO emergency verifier override after vault expiry
 
 ---
 
@@ -60,13 +45,13 @@ DonationVault is a Next.js frontend for a Solidity smart contract that lets dono
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
-| Styling | Tailwind CSS v4 |
-| Web3 | ethers.js v6 |
+| Styling | Custom CSS (globals.css) |
+| Web3 | viem v2 |
 | Wallet | MetaMask |
 | Network | RSK Testnet (Chain ID: 31) |
-| Contract | Solidity ^0.8.20 |
+| Contract | Solidity 0.8.25 (DonationVault) / 0.8.24 (DonationVaultFactory) |
 
 ---
 
@@ -74,31 +59,45 @@ DonationVault is a Next.js frontend for a Solidity smart contract that lets dono
 
 ```
 donation-vault/
-├── app/
-│   ├── globals.css          # Tailwind v4 @theme config + animations
-│   ├── layout.tsx           # Root layout, WalletProvider
-│   ├── page.tsx             # Main vault dashboard
-│   └── deploy/
-│       └── page.tsx         # Deploy a new vault from the browser
+├── SmartContract/
+│   └── rootstock-hardhat-starterkit/
+│       ├── contracts/
+│       │   ├── DonationVault.sol         # Core escrow contract
+│       │   └── DonationVaultFactory.sol  # Factory + on-chain registry
+│       ├── deploy/
+│       │   ├── deploy.ts                 # Deploy a single DonationVault
+│       │   └── deployFactory.ts          # Deploy the factory
+│       └── test/
+│           └── RSKDonate.ts              # Full test suite (35+ cases)
 │
-├── components/
-│   ├── Header.tsx           # Sticky nav, wallet status
-│   ├── StatsBar.tsx         # Progress bar, raised/target/contribution
-│   ├── DonatePanel.tsx      # Donate form with quick-fill buttons
-│   ├── RefundPanel.tsx      # Refund with live expiry countdown
-│   ├── MilestoneList.tsx    # Milestone cards + verifier release
-│   ├── NetworkBanner.tsx    # Wrong network warning + switch button
-│   ├── TxLink.tsx           # Tx hash → RSK Explorer
-│   └── Toast.tsx            # Success / error / info toasts
-│
-├── hooks/
-│   ├── useWallet.tsx        # Wallet context: connect, chain, account
-│   └── useVault.ts          # All contract reads + writes
-│
-└── lib/
-    ├── contract.ts          # ABI + RSK Testnet chain config
-    ├── wallet.ts            # connectWallet helper
-    └── types.d.ts           # window.ethereum type declaration
+└── Frontend/
+    └── frontend/
+        ├── app/
+        │   ├── globals.css               # CSS variables and component styles
+        │   ├── layout.tsx                # Root layout and metadata
+        │   ├── page.tsx                  # Main vault dashboard
+        │   ├── deploy/
+        │   │   └── page.tsx              # Deploy a new vault via factory
+        │   └── vaults/
+        │       └── page.tsx              # Browse all factory-deployed vaults
+        │
+        ├── components/
+        │   ├── Header.tsx                # Sticky nav, wallet status, network links
+        │   ├── StatsBar.tsx              # Progress bar, raised/target stats
+        │   ├── MilestoneTracker.tsx      # Milestone list + verifier release buttons
+        │   └── DonateModal.tsx           # Donation modal with validation and presets
+        │
+        ├── hooks/
+        │   ├── useContract.ts            # All vault reads/writes, wallet connection
+        │   └── useFactory.ts             # Factory reads/writes, vault registry
+        │
+        ├── constant/
+        │   ├── abi.ts                    # DonationVault ABI
+        │   └── factoryAbi.ts             # DonationVaultFactory ABI
+        │
+        └── lib/
+            ├── contract.ts               # Addresses, RSK chain config
+            └── type.ts                   # Shared TypeScript types
 ```
 
 ---
@@ -111,44 +110,88 @@ donation-vault/
 - MetaMask browser extension
 - tRBTC from the [RSK Testnet Faucet](https://faucet.rsk.co)
 
-### 1. Clone and install
+### 1. Clone and install dependencies
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/donation-vault.git
-cd donation-vault
+
+# Install smart contract dependencies
+cd SmartContract/rootstock-hardhat-starterkit
+npm install
+
+# Install frontend dependencies
+cd ../../Frontend/frontend
 npm install
 ```
 
-### 2. Deploy the contract
+### 2. Configure the smart contract environment
 
-Either use the `/deploy` page in the app (easiest), or deploy manually with Hardhat/Remix and copy the contract address.
-
-**Constructor parameters:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| `_ngo` | `address` | Wallet that receives released milestone funds |
-| `_verifier` | `address` | Wallet authorized to release milestones |
-| `_description` | `string` | Human-readable vault purpose |
-| `_targetAmount` | `uint256` | Total funding goal in wei |
-| `_milestoneAmounts` | `uint256[]` | Array of per-milestone release amounts in wei |
-| `_milestoneDescriptions` | `string[]` | Array of milestone descriptions |
-
-### 3. Set environment variables
-
-Create a `.env.local` file in the project root:
-
-```env
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+```bash
+cd SmartContract/rootstock-hardhat-starterkit
+cp .env.example .env
 ```
 
-### 4. Run the dev server
+Edit `.env` and fill in:
+
+```env
+RSK_TESTNET_RPC_URL=https://public-node.testnet.rsk.co
+WALLET_PRIVATE_KEY=your_deployer_private_key_here
+```
+
+> **Warning:** Never commit your real private key. The `.env` file is git-ignored.
+
+### 3. Deploy the contracts
+
+**Option A — Deploy the factory first (recommended)**
+
+```bash
+npx hardhat deploy --tags DonationVaultFactory --network rskTestnet
+```
+
+Then use the `/deploy` page in the frontend to create individual vaults through the factory.
+
+**Option B — Deploy a single vault directly**
+
+```bash
+npx hardhat deploy --tags DonationVault --network rskTestnet
+```
+
+Copy the deployed address printed to the console.
+
+### 4. Configure the frontend environment
+
+```bash
+cd Frontend/frontend
+cp .env.example .env.local
+```
+
+Edit `.env.local`:
+
+```env
+# Address of the deployed DonationVault (required for the main dashboard)
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourDeployedVaultAddress
+
+# Address of the deployed DonationVaultFactory (required for /deploy and /vaults)
+NEXT_PUBLIC_FACTORY_ADDRESS=0xYourDeployedFactoryAddress
+
+# Optional: Rootstock paid RPC API key
+NEXT_PUBLIC_RSK_API_KEY=your_rsk_api_key_here
+```
+
+### 5. Run the development server
 
 ```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### 6. Run the smart contract test suite
+
+```bash
+cd SmartContract/rootstock-hardhat-starterkit
+npx hardhat test
+```
 
 ---
 
@@ -158,9 +201,12 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 | Function | Who | Description |
 |---|---|---|
-| `donate()` | Anyone | Send tRBTC to the vault (payable) |
+| `donate()` | Anyone | Send tRBTC to the vault (payable). Zero-value calls revert. Excess over target is auto-refunded. Per-donor cap enforced. |
 | `releaseMilestone(uint256 index)` | Verifier only | Release a milestone's funds to the NGO |
 | `claimRefund()` | Donors | Claim refund after 90-day expiry window |
+| `requestVerifierHandoff(address)` | Verifier | Step 1 of rotation — starts the 2-day clock |
+| `acceptVerifierHandoff()` | Pending verifier | Step 2 — accepts role after delay elapses |
+| `emergencyReplaceVerifier(address)` | NGO only | Forcibly replace verifier after vault has expired |
 
 ### Key State
 
@@ -168,27 +214,36 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |---|---|
 | `ngo` | Address receiving released funds |
 | `verifier` | Address authorized to release milestones |
+| `pendingVerifier` | Proposed successor verifier (zero if none pending) |
 | `targetAmount` | Total fundraising goal |
-| `totalRaised` | Current total donations |
+| `totalRaised` | Current total accepted donations |
+| `maxContributionPerDonor` | Per-address cap (10% of targetAmount) |
 | `lastUpdateTimestamp` | Timestamp of last donate or release (resets expiry) |
 | `EXPIRY_WINDOW` | `90 days` — hardcoded constant |
-| `contributions[address]` | Individual donor contributions |
+| `HANDOFF_DELAY` | `2 days` — minimum wait before handoff acceptance |
+| `contributions[address]` | Individual donor accepted contributions |
 | `milestones[]` | Array of `{ amount, released, description }` |
 
 ### Events
 
 | Event | Emitted When |
 |---|---|
-| `Donated(donor, amount)` | A donation is made |
+| `Donated(donor, amount)` | A donation is accepted |
 | `MilestoneReleased(index, amount)` | Verifier releases a milestone |
 | `RefundClaimed(donor, amount)` | Donor claims a refund |
+| `VerifierUpdated(oldVerifier, newVerifier)` | Verifier role changes |
+| `VerifierHandoffRequested(currentVerifier, proposed, unlockAt)` | Handoff requested |
 
 ### Security Notes
 
 - Only the `verifier` address can call `releaseMilestone`
+- Verifier rotation uses a two-step, 2-day time-locked handoff
+- NGO can emergency-replace a lost verifier, but only after the 90-day expiry
 - Refunds are only claimable after `lastUpdateTimestamp + 90 days`
-- The vault blocks donations once `totalRaised >= targetAmount`
-- Contributions mapping is zeroed before transfer (reentrancy-safe pattern)
+- Donations exceeding the target are automatically refunded to the sender
+- A single donor cannot contribute more than 10% of the target
+- Milestone amounts must sum exactly to `targetAmount` at deploy time
+- `contributions` mapping is zeroed before transfer in `claimRefund` (reentrancy-safe)
 
 ---
 
@@ -211,15 +266,24 @@ MetaMask will be prompted to add this network automatically on first connect.
 | Variable | Required | Description |
 |---|---|---|
 | `NEXT_PUBLIC_CONTRACT_ADDRESS` | Yes | Deployed `DonationVault` contract address |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | Deployed `DonationVaultFactory` address |
+| `NEXT_PUBLIC_RSK_API_KEY` | Optional | Rootstock RPC API key for paid endpoint |
 
 ---
 
 ## Scripts
 
 ```bash
+# Frontend
 npm run dev       # Start development server
 npm run build     # Production build
 npm run start     # Start production server
+npm run lint      # Run ESLint
+
+# Smart Contract
+npx hardhat test                    # Run full test suite
+npx hardhat coverage                # Generate coverage report
+npx hardhat deploy --network rskTestnet  # Deploy all contracts
 ```
 
 ---

@@ -42,6 +42,16 @@ export const DONATION_VAULT_ABI = [
     },
     {
       "inputs": [],
+      "name": "ExceedsDonorCap",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "HandoffTooEarly",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "InsufficientFunds",
       "type": "error"
     },
@@ -67,7 +77,17 @@ export const DONATION_VAULT_ABI = [
     },
     {
       "inputs": [],
+      "name": "NoPendingHandoff",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "NotExpired",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "OnlyNgo",
       "type": "error"
     },
     {
@@ -83,6 +103,11 @@ export const DONATION_VAULT_ABI = [
     {
       "inputs": [],
       "name": "ZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroDonation",
       "type": "error"
     },
     {
@@ -148,6 +173,31 @@ export const DONATION_VAULT_ABI = [
         {
           "indexed": true,
           "internalType": "address",
+          "name": "currentVerifier",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "proposed",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "unlockAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "VerifierHandoffRequested",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "oldVerifier",
           "type": "address"
         },
@@ -172,6 +222,26 @@ export const DONATION_VAULT_ABI = [
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "HANDOFF_DELAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "acceptVerifierHandoff",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -221,8 +291,34 @@ export const DONATION_VAULT_ABI = [
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_newVerifier",
+          "type": "address"
+        }
+      ],
+      "name": "emergencyReplaceVerifier",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "lastUpdateTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxContributionPerDonor",
       "outputs": [
         {
           "internalType": "uint256",
@@ -289,6 +385,19 @@ export const DONATION_VAULT_ABI = [
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "pendingVerifier",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint256",
@@ -297,6 +406,19 @@ export const DONATION_VAULT_ABI = [
         }
       ],
       "name": "releaseMilestone",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_proposed",
+          "type": "address"
+        }
+      ],
+      "name": "requestVerifierHandoff",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -328,19 +450,6 @@ export const DONATION_VAULT_ABI = [
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_newVerifier",
-          "type": "address"
-        }
-      ],
-      "name": "updateVerifier",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [],
       "name": "verifier",
       "outputs": [
@@ -348,6 +457,19 @@ export const DONATION_VAULT_ABI = [
           "internalType": "address",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "verifierHandoffRequestedAt",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
